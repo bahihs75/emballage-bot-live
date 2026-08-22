@@ -1,63 +1,37 @@
-<<<<<<< HEAD
-const fetch = require('node-fetch');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
-async function deployToNetlify(htmlContent, fileName) {
-  const filePath = path.join(__dirname, fileName);
-  fs.writeFileSync(filePath, htmlContent, 'utf8');
+const NETLIFY_TIMEOUT_MS = 30_000;
 
+async function deployToNetlify(htmlContent, fileName = 'index.html') {
+  const siteId = process.env.NETLIFY_SITE_ID;
+  const token = process.env.NETLIFY_TOKEN;
+  if (!siteId || !token) {
+    throw new Error('NETLIFY_SITE_ID and NETLIFY_TOKEN are required.');
+  }
+
+  const safeFileName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '-');
   const form = new FormData();
-  form.append('files[]', fs.createReadStream(filePath), { filepath: fileName });
+  form.append('files[]', new Blob([htmlContent], { type: 'text/html; charset=utf-8' }), { filename: safeFileName });
 
-  const response = await fetch(`https://api.netlify.com/api/v1/sites/${process.env.NETLIFY_SITE_ID}/deploys`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.NETLIFY_TOKEN}`,
-    },
-    body: form,
-  });
-
-  const data = await response.json();
-  fs.unlinkSync(filePath);
-  return data.deploy_ssl_url + '/' + fileName;
-}
-
-module.exports = deployToNetlify;
-=======
-≈≈require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
-cconst fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-
-async function deployToNetlify(htmlContent, filename = "index.html") {
-  const tempDir = path.join(__dirname, "temp");
-  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-
-  const filePath = path.join(tempDir, filename);
-  fs.writeFileSync(filePath, htmlContent);
-
-  const response = await fetch(
-    `https://api.netlify.com/api/v1/sites/${process.env.NETLIFY_SITE_ID}/deploys`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.NETLIFY_TOKEN}`,
-      },
-      body: JSON.stringify({
-        files: {
-          [`/${filename}`]: htmlContent,
-        },
-      }),
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), NETLIFY_TIMEOUT_MS);
+  try {
+    const response = await fetch(`https://api.netlify.com/api/v1/sites/${encodeURIComponent(siteId)}/deploys`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.deploy_ssl_url) {
+      const reason = payload.message || payload.error || `Netlify returned HTTP ${response.status}.`;
+      throw new Error(`Deployment failed: ${reason}`);
     }
-  );
-
-  const result = await response.json();
-  const url = `${result.deploy_ssl_url}/${filename}`;
-  return url;
+    return `${payload.deploy_ssl_url}/${encodeURIComponent(safeFileName)}`;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 module.exports = deployToNetlify;
-
->>>>>>> 4002ece (Initial commit)

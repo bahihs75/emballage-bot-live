@@ -1,0 +1,5 @@
+# External verification notes
+
+- Telegram’s official Bot API documentation is available at https://core.telegram.org/bots/api. The relevant contract is that `getFile` returns a `file_path`, which can then be used to download the file server-side. The revised bot keeps that URL construction on the server and embeds the downloaded bytes as a data URI instead of publishing a token-bearing Telegram file URL.
+- Netlify’s Functions overview is available at https://docs.netlify.com/build/functions/overview/. It describes a function as server-side code responding to an event, with web-request responses returned to the client and automatic platform scaling. The revised order receiver follows the function-based boundary and is configured under `netlify/functions`.
+- Node’s `AbortSignal.timeout()` is documented at https://nodejs.org/api/globals.html. The revised Telegram, image-download, deployment, and order-notification calls use explicit abort timeouts rather than allowing network calls to hang indefinitely.
